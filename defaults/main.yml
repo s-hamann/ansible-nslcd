@@ -1,0 +1,5 @@
+---
+nslcd_starttls: false
+nslcd_tls_ca_path: "{{ nslcd_default_tls_ca_path }}"
+nslcd_extra_options: []
+nslcd_mkhomedir: false

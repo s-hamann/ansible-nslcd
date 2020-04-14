@@ -1,0 +1,12 @@
+{# vim: ft=conf.jinja2 #}
+{{ ansible_managed | comment }}
+
+{% for key, value in (nslcd_default_options | combine(nslcd_extra_options)).items() if value != omit %}
+{% if value is sequence and value is not string %}
+{% for v in value %}
+{{ key }} {{ v }}
+{% endfor %}
+{% else %}
+{{ key }} {{ value }}
+{% endif %}
+{% endfor %}

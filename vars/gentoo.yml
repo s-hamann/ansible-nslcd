@@ -1,0 +1,3 @@
+---
+nslcd_pkgs:
+  - sys-auth/nss-pam-ldapd

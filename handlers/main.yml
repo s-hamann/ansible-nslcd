@@ -1,0 +1,11 @@
+---
+- name: 'reload service files'
+  systemd:
+    daemon_reload: true
+  listen: nslcd_reload_service_files
+  when: "ansible_facts['service_mgr'] == 'systemd'"
+
+- name: 'restart nslcd'
+  service:
+    name: 'nslcd'
+    state: 'restarted'

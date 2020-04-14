@@ -1,0 +1,29 @@
+---
+nslcd_default_ciphers:
+  openssl: 'AESGCM:CHACHA20:!aNULL:!RSA:!PSK'
+  gnutls: 'NORMAL:-MAC-ALL:+AEAD:-RSA'
+nslcd_default_options:
+  uid: "{{ nslcd_user if ansible_facts['service_mgr'] != 'systemd' else omit }}"
+  gid: "{{ nslcd_group if ansible_facts['service_mgr'] != 'systemd' else omit }}"
+  uri: "{{ nslcd_uri }}"
+  ssl: "{{ 'start_tls' if nslcd_starttls | bool else omit }}"
+  tls_reqcert: demand
+  tls_cacertdir: "{{ nslcd_tls_ca_path }}"
+  tls_ciphers: "{{ nslcd_default_ciphers[nslcd_tls_library] }}"
+  tls_cert: "{{ nslcd_tls_cert | default(omit) }}"
+  tls_key: "{{ nslcd_tls_cert_key | default(omit) }}"
+  binddn: "{{ nslcd_binddn | default(omit) }}"
+  bindpw: "{{ nslcd_bindpw | default(omit) }}"
+  rootpwmoddn: "{{ nslcd_rootdn | default(omit) }}"
+  rootpwmodpw: "{{ nslcd_rootpw | default(omit) }}"
+  base: "{{ nslcd_base }}"
+  base passwd: "{{ nslcd_user_base | default(omit) }}"
+  base shadow: "{{ nslcd_user_base | default(omit) }}"
+  base group: "{{ nslcd_group_base | default(omit) }}"
+  scope passwd: "{{ nslcd_user_scope | default(omit) }}"
+  scope shadow: "{{ nslcd_user_scope | default(omit) }}"
+  scope group: "{{ nslcd_group_scope | default(omit) }}"
+  filter passwd: "{{ nslcd_user_filter | default(omit) }}"
+  filter shadow: "{{ nslcd_user_filter | default(omit) }}"
+  filter group: "{{ nslcd_group_filter | default(omit) }}"
+  nss_initgroups_ignoreusers: ALLLOCAL

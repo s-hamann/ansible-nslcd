@@ -1,0 +1,27 @@
+galaxy_info:
+  author: Sebastian Hamann
+  description: Install and configure nslcd and PAM to enable user authentication against an LDAP directory
+  license: MIT
+
+  min_ansible_version: 2.5
+
+  platforms:
+    - name: Gentoo
+      versions:
+        - any
+    - name: Debian
+      versions:
+        - buster
+    - name: GenericLinux
+      versions:
+        - any
+    - name: GenericUNIX
+      versions:
+        - any
+
+  galaxy_tags:
+    - ldap
+    - nslcd
+    - system
+
+dependencies: []

@@ -1,0 +1,233 @@
+---
+- name: 'gather os specific variables'
+  include_vars: "{{ vars_file }}"
+  loop:
+    - 'default.yml'
+    - "{{ ansible_facts['os_family'] | lower }}.yml"
+    - "{{ ansible_facts['distribution'] | lower }}.yml"
+    - "{{ ansible_facts['distribution'] | lower }}-{{ ansible_facts['distribution_major_version'] }}.yml"
+    - "{{ ansible_facts['distribution'] | lower }}-{{ ansible_facts['distribution_version'] }}.yml"
+  loop_control:
+    loop_var: vars_file
+  when: "(vars_file is abs and vars_file is file) or (vars_file is not abs and (role_path ~ '/vars/' ~ vars_file) is file)"
+
+- name: 'installed required software'
+  package:
+    name: "{{ nslcd_pkgs }}"
+    install_recommends: "{{ false if ansible_facts['pkg_mgr'] == 'apt' else omit }}"
+    state: present
+
+- name: "add {{ nslcd_user }} to extra groups"
+  user:
+    name: "{{ nslcd_user }}"
+    groups: "{{ nslcd_extra_groups }}"
+    append: true
+  notify: 'restart nslcd'
+  when: "[nslcd_extra_groups | default([])] | flatten | count"
+
+- name: 'harden nslcd.service'
+  block:
+    - name: 'create override directory for nslcd.service'
+      file:
+        path: '/etc/systemd/system/nslcd.service.d/'
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: 'install override file for nslcd.service'
+      template:
+        dest: '/etc/systemd/system/nslcd.service.d/override.conf'
+        src: 'nslcd_override.conf.j2'
+        owner: root
+        group: root
+        mode: 0644
+      notify:
+        - 'nslcd_reload_service_files'
+        - 'restart nslcd'
+
+  when: "ansible_facts['service_mgr'] == 'systemd'"
+
+- name: 'determine TLS library'
+  block:
+
+    - name: 'get dynamically linked libraries of nslcd'
+      command: 'ldd /usr/sbin/nslcd'
+      changed_when: false
+      register: _ldd_nslcd
+
+    - name: 'set library'
+      set_fact:
+        nslcd_tls_library: "{{ library.name }}"
+      loop:
+        - name: 'openssl'
+          file: 'libssl.so'
+        - name: 'gnutls'
+          file: 'libgnutls.so'
+      loop_control:
+        loop_var: library
+        label: "{{ library.name }}"
+      when: "library.file in _ldd_nslcd.stdout"
+
+  when: "nslcd_tls_library is not defined"
+
+- name: 'configure NSS to use LDAP'
+  replace:
+    path: '/etc/nsswitch.conf'
+    regexp: "^(?-m:((?:passwd|shadow|group):(?:(?<!ldap)(\\s+\\S+\\b)(?!\\sldap))+))$"
+    replace: "\\1 ldap"
+
+- name: 'configure nslcd'
+  template:
+    dest: '/etc/nslcd.conf'
+    src: 'nslcd.conf.j2'
+    owner: root
+    group: "{{ nslcd_group }}"
+    mode: 0640
+  notify: 'restart nslcd'
+
+- meta: flush_handlers
+
+- name: 'enable and start nslcd'
+  service:
+    name: nslcd
+    enabled: true
+    state: "{{ ansible_facts['is_chroot'] | ternary(omit, 'started') }}"
+
+- name: 'initialise PAM configuration status tracker'
+  set_fact:
+    _pam_done: false
+
+- name: 'configure PAM (Debian)'
+  block:
+
+    - name: 'run pam-auth-update'
+      command: 'pam-auth-update --enable ldap{% if nslcd_mkhomedir | bool %} --enable mkhomedir{% endif %}'
+      # pam-auth-update gives no indication of whether something was changed or not
+
+    - name: 'register successful PAM configuration'
+      set_fact:
+        _pam_done: true
+
+  when: "not _pam_done and ansible_facts['os_family'] == 'Debian'"
+
+- name: 'check for pambase'
+  stat:
+    path: '/etc/pam.d/system-auth'
+  register: _pam_system_auth
+  when: "not _pam_done"
+
+- name: 'configure PAM (pambase)'
+  block:
+
+    - name: 'configure pambase'
+      lineinfile:
+        path: "/etc/pam.d/system-auth"
+        line: "{{ item.line }}"
+        regexp: "{{ item.regexp }}"
+        insertbefore: "{{ item.before | default(omit) }}"
+        insertafter: "{{ item.after | default(omit) }}"
+        create: false
+        state: present
+      loop:
+        - line: 'auth		sufficient	pam_ldap.so'
+          regexp: '^auth\s+\S+\s+pam_ldap.so'
+          before: '^auth\s+required\s+pam_unix.so'
+        - line: 'account		sufficient	pam_ldap.so'
+          regexp: '^account\s+\S+\s+pam_ldap.so'
+          before: '^account\s+required\s+pam_unix.so'
+        - line: 'password	sufficient	pam_ldap.so'
+          regexp: '^password\s+\S+\s+pam_ldap.so'
+          before: '^password\s+required\s+pam_unix.so'
+        - line: 'session		optional	pam_ldap.so'
+          regexp: '^session\s+\S+\s+pam_ldap.so'
+          after: '^session\s+required\s+pam_unix.so'
+        - line: 'session		optional	pam_mkhomedir.so'
+          regexp: '^session\s+\S+\s+pam_mkhomedir.so'
+          after: '^session\s+\S+\s+pam_ldap.so'
+          when: "{{ nslcd_mkhomedir | bool }}"
+      loop_control:
+        label: "{{ item.line }}"
+      when: "item.when | default(true)"
+
+    - name: 'register successful PAM configuration'
+      set_fact:
+        _pam_done: true
+
+  when: "not _pam_done and _pam_system_auth.stat.exists"
+
+- name: 'configure PAM (generic)'
+  block:
+
+    - name: 'issue generic warning'
+      debug:
+        msg: 'Warning: Attempting generic PAM configuration. This may be unreliable.'
+
+    - name: 'find PAM configuration files'
+      find:
+        paths: '/etc/pam.d/'
+        file_type: file
+      register: _pam_files
+
+    - name: 'configure auth'
+      lineinfile:
+        path: "{{ file }}"
+        line: 'auth sufficient pam_ldap.so'
+        regexp: '^auth\s+\S+\s+pam_ldap.so'
+        insertbefore: '^auth\s+required\s+pam_unix.so'
+        state: present
+      loop: "{{ _pam_files.files }}"
+      loop_control:
+        loop_var: file
+        label: "{{ file | basename }}"
+
+    - name: 'configure account'
+      lineinfile:
+        path: "{{ file }}"
+        line: 'account sufficient pam_ldap.so'
+        regexp: '^account\s+\S+\s+pam_ldap.so'
+        insertbefore: '^account\s+required\s+pam_unix.so'
+        state: present
+      loop: "{{ _pam_files.files }}"
+      loop_control:
+        loop_var: file
+        label: "{{ file | basename }}"
+
+    - name: 'configure password'
+      lineinfile:
+        path: "{{ file }}"
+        line: 'password sufficient pam_ldap.so'
+        regexp: '^password\s+\S+\s+pam_ldap.so'
+        insertbefore: '^password\s+required\s+pam_unix.so'
+        state: present
+      loop: "{{ _pam_files.files }}"
+      loop_control:
+        loop_var: file
+        label: "{{ file | basename }}"
+
+    - name: 'configure session'
+      lineinfile:
+        path: "{{ file }}"
+        line: 'session optional pam_ldap.so'
+        regexp: '^session\s+\S+\s+pam_ldap.so'
+        insertafter: '^session\s+required\s+pam_unix.so'
+        state: present
+      loop: "{{ _pam_files.files }}"
+      loop_control:
+        loop_var: file
+        label: "{{ file | basename }}"
+
+    - name: 'configure pam_mkhomedir'
+      lineinfile:
+        path: "{{ file }}"
+        line: 'session optional pam_mkhomedir.so'
+        regexp: '^session\s+\S+\s+pam_mkhomedir.so'
+        insertafter: '^session\s+\S+\s+pam_ldap.so'
+        state: present
+      loop: "{{ _pam_files.files }}"
+      loop_control:
+        loop_var: file
+        label: "{{ file | basename }}"
+      when: "nslcd_mkhomedir | bool"
+
+  when: "not _pam_done"

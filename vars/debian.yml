@@ -1,0 +1,4 @@
+---
+nslcd_pkgs:
+  - libnss-ldapd
+  - libpam-ldapd
