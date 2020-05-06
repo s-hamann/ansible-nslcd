@@ -84,6 +84,7 @@
     owner: root
     group: "{{ nslcd_group }}"
     mode: 0640
+  no_log: "{{ ['bindpw', 'rootpw'] | select('in', (nslcd_default_options | combine(nslcd_extra_options)).keys()) is any }}"
   notify: 'restart nslcd'
 
 - meta: flush_handlers
