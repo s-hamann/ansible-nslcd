@@ -9,19 +9,26 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 {% if nslcd_inaccessible_paths is defined %}
-InaccessiblePaths={{ [nslcd_inaccessible_paths] | flatten | unique | map('quote') | join(' ') }}
+{% for path in [nslcd_inaccessible_paths] | flatten | unique %}
+InaccessiblePaths=-{{ path | quote }}
+{% endfor %}
 {% endif %}
 PrivateTmp=true
 PrivateDevices=true
+PrivateUsers=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
+ProtectProc=invisible
+ProtectClock=true
+ProtectHostname=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=true
 RestrictRealtime=true
+RestrictSUIDSGID=true
 SystemCallFilter=@system-service @basic-io @io-event @network-io
 SystemCallFilter=~@aio @chown @cpu-emulation @debug @keyring @memlock @module @obsolete @privileged @raw-io @resources @setuid @sync
 SystemCallArchitectures=native
