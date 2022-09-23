@@ -3,3 +3,5 @@ nslcd_starttls: false
 nslcd_tls_ca_path: "{{ nslcd_default_tls_ca_path }}"
 nslcd_extra_options: []
 nslcd_mkhomedir: false
+nslcd_system_service_group: "@system-service"
+nslcd_system_service_syscalls: "@aio @basic-io @chown @default @file-system @io-event @ipc @keyring @memlock @network-io @process @resources @setuid @signal @sync @timer brk capget capset copy_file_range fadvise64 fadvise64_64 flock get_mempolicy getcpu getpriority getrandom ioctl ioprio_get kcmp madvise mprotect mremap name_to_handle_at oldolduname olduname personality readahead readdir remap_file_pages sched_get_priority_max sched_get_priority_min sched_getaffinity sched_getattr sched_getparam sched_getscheduler sched_rr_get_interval sched_rr_get_interval_time64 sched_yield sendfile sendfile64 setfsgid setfsgid32 setfsuid setfsuid32 setpgid setsid splice sysinfo tee umask uname userfaultfd vmsplice"

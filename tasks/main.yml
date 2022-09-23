@@ -27,6 +27,16 @@
 
 - name: 'harden nslcd.service'
   block:
+    # on old systemd system-service group filter may not exist, we will then rely on a sane default list
+    - name: 'test if systemd support the @system-service filter'
+      shell: "systemd-analyze syscall-filter --no-pager {{nslcd_system_service_group}}"
+      failed_when: false
+      changed_when: false
+      register: nslcd_system_service_check
+
+    - set_fact:
+        nslcd_system_service_: "{{nslcd_system_service_check.rc == 0 and nslcd_system_service_group or nslcd_system_service_syscalls}}"
+
     - name: 'create override directory for nslcd.service'
       file:
         path: '/etc/systemd/system/nslcd.service.d/'
